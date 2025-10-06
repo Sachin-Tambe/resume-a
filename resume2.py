@@ -398,11 +398,27 @@ else:
     st.header(resume.get('fullName', 'SACHIN TAMBE'))
     st.subheader(resume.get('role', 'Data Analyst | Aspiring Data Scientist'))
     
-    # --- Dynamic Contact HTML for Web View ---
+    # --- Dynamic Contact HTML for Web View with Data Validation ---
+    # Ensure link data is in the correct dictionary format before use
     linkedin = resume.get('linkedin', {})
+    if not isinstance(linkedin, dict):
+        linkedin = {"name": "LinkedIn", "url": ""}
+        resume['linkedin'] = linkedin # Correct the state
+
     github = resume.get('github', {})
+    if not isinstance(github, dict):
+        github = {"name": "GitHub", "url": ""}
+        resume['github'] = github
+
     kaggle = resume.get('kaggle', {})
+    if not isinstance(kaggle, dict):
+        kaggle = {"name": "Kaggle", "url": ""}
+        resume['kaggle'] = kaggle
+
     portfolio = resume.get('portfolio', {})
+    if not isinstance(portfolio, dict):
+        portfolio = {"name": "Portfolio", "url": ""}
+        resume['portfolio'] = portfolio
 
     contact_html_parts = [
         resume.get('phone',''),
@@ -492,12 +508,22 @@ edit_list_section("Soft Skills", resume.get('softSkills', []), "soft")
 
 def create_editable_section(section_title, section_key, template_item, display_func):
     st.subheader(section_title)
+    # Ensure the section exists as a list before iterating
+    if not isinstance(resume.get(section_key), list):
+        resume[section_key] = []
+
     for i in range(len(resume.get(section_key, [])) - 1, -1, -1):
         item = resume[section_key][i]
+        # Ensure item is a dictionary before processing
+        if not isinstance(item, dict):
+            # If item is not a dict, skip or replace it
+            continue 
+
         if edit_mode:
-            expander_title = item.get('title', item.get('degree', item.get('name')))
+            expander_title = item.get('title', item.get('degree', item.get('name', f"Entry {i+1}")))
             with st.expander(f"Edit {section_title[:-1]} {i+1}: {expander_title}"):
-                for key, value in item.items():
+                # Use item.copy().items() to avoid issues while iterating and modifying
+                for key, value in item.copy().items():
                     if isinstance(value, list):
                         item[key] = st.text_area(f"{key.title()}", "\n".join(value), key=f"{section_key}_{i}_{key}").split('\n')
                     else:
@@ -513,13 +539,13 @@ def create_editable_section(section_title, section_key, template_item, display_f
         st.rerun()
 
 create_editable_section("Professional Experience", "experience", {"title": "New Role", "company": "Company", "duration": "Date - Date", "location": "City, Country", "tasks": ["Task 1"]},
-    lambda item: st.markdown(f"**{item['title']}** | _{item['company']}_ | {item['duration']}\n" + "".join([f"\n- {task}" for task in item.get('tasks', [])])))
+    lambda item: st.markdown(f"**{item.get('title','')}** | _{item.get('company','')}_ | {item.get('duration','')}\n" + "".join([f"\n- {task}" for task in item.get('tasks', [])])))
 create_editable_section("Education", "education", {"degree": "Degree Name", "institution": "University", "duration": "Year - Year", "location": "City, Country"},
-    lambda item: st.markdown(f"**{item['degree']}**, {item['institution']} ({item['duration']})"))
+    lambda item: st.markdown(f"**{item.get('degree','')}**, {item.get('institution','')} ({item.get('duration','')})"))
 create_editable_section("Projects", "projects", {"title": "New Project", "description": "...", "link": "#"},
-    lambda item: st.markdown(f"**<a href='{item.get('link', '#')}' target='_blank'>{item['title']}</a>**: {item['description']}", unsafe_allow_html=True))
+    lambda item: st.markdown(f"**<a href='{item.get('link', '#')}' target='_blank'>{item.get('title','')}</a>**: {item.get('description','')}", unsafe_allow_html=True))
 create_editable_section("Certifications", "certifications", {"name": "Certification Name", "issuer": "Issuing Body", "link": "#"},
-    lambda item: st.markdown(f"- <a href='{item.get('link', '#')}' target='_blank'>{item['name']}</a> *({item['issuer']})*", unsafe_allow_html=True))
+    lambda item: st.markdown(f"- <a href='{item.get('link', '#')}' target='_blank'>{item.get('name','')}</a> *({item.get('issuer','')})*", unsafe_allow_html=True))
 
 
 # --- PDF Download Button ---
