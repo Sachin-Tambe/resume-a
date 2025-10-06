@@ -291,6 +291,12 @@ def generate_tailored_content(jd, current_experience, core_skills):
         st.warning("Halting generation due to one or more AI response errors.")
         return None
 
+    # --- NEW: Validate that all items within the 'new_projects' list are dictionaries ---
+    if any(not isinstance(p, dict) for p in new_projects):
+        st.error("AI Error: The 'Projects' response was not a list of project objects as expected.")
+        st.code(json.dumps(new_projects, indent=2)) # Show the faulty structure
+        return None
+
     # --- SAFER SUMMARY GENERATION ---
     tech_skills_dict = new_skills_data.get('technicalSkills', {})
     all_skills_flat = []
@@ -332,19 +338,32 @@ with st.sidebar:
 
     if st.button("✨ Tailor Resume with AI", use_container_width=True, type="primary", disabled=(not model)):
         with st.spinner("🤖 AI is tailoring your resume..."):
-            current_experience = st.session_state.resume_data.get('experience', [{}])[0]
-            core_skills = get_default_resume()['technicalSkills'] # Use the default skills as the baseline
-            ai_content = generate_tailored_content(jd, current_experience, core_skills)
+            # --- Robustly get the current experience to be tailored ---
+            experience_list = st.session_state.resume_data.get('experience', [])
+            current_experience = None
+
+            if isinstance(experience_list, list) and experience_list:
+                if isinstance(experience_list[0], dict):
+                    current_experience = experience_list[0]
+                else:
+                    st.error("The first experience entry is invalid. Please fix it in Edit Mode.")
+            else:
+                st.error("No experience data found. Please add an entry in Edit Mode to tailor it.")
             
-            if ai_content:
-                # REWRITE sections with new AI content
-                st.session_state.resume_data['summary'] = ai_content['summary']
-                st.session_state.resume_data['technicalSkills'] = ai_content.get('technicalSkills', {})
-                st.session_state.resume_data['softSkills'] = ai_content['softSkills']
-                st.session_state.resume_data['projects'] = ai_content['projects']
-                st.session_state.resume_data['experience'][0] = ai_content['experience'][0]
-                st.success("Resume tailored successfully!")
-                st.rerun()
+            # --- Only proceed if the experience data is valid ---
+            if current_experience:
+                core_skills = get_default_resume()['technicalSkills']
+                ai_content = generate_tailored_content(jd, current_experience, core_skills)
+                
+                if ai_content:
+                    # REWRITE sections with new AI content
+                    st.session_state.resume_data['summary'] = ai_content['summary']
+                    st.session_state.resume_data['technicalSkills'] = ai_content.get('technicalSkills', {})
+                    st.session_state.resume_data['softSkills'] = ai_content['softSkills']
+                    st.session_state.resume_data['projects'] = ai_content['projects']
+                    st.session_state.resume_data['experience'][0] = ai_content['experience'][0]
+                    st.success("Resume tailored successfully!")
+                    st.rerun()
 
     if st.button("💾 Save to CSV", use_container_width=True):
         save_to_csv(st.session_state.resume_data)
@@ -507,3 +526,4 @@ create_editable_section("Certifications", "certifications", {"name": "Certificat
 st.sidebar.divider()
 pdf_data = create_resume_pdf(st.session_state.resume_data)
 st.sidebar.download_button(label="⬇️ Download PDF", data=pdf_data, file_name=f"{resume.get('fullName', 'resume').replace(' ', '_')}_Resume.pdf", mime="application/pdf", use_container_width=True)
+
