@@ -18,10 +18,10 @@ st.set_page_config(page_title="AI Resume Tailor", page_icon="📄", layout="wide
 # --- Gemini AI Configuration ---
 # It's recommended to use Streamlit secrets for API keys
 # For example: GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-GEMINI_API_KEY = "AIzaSyDoxoLKeZHJ3rw7NNpN1q0BY00KXCRcqT4" # Replace with your actual key or use secrets
+GEMINI_API_KEY = "YOUR_GEMINI_API_KEY" # Replace with your actual key or use secrets
 model = None
 try:
-    if GEMINI_API_KEY != "YOUR_API_KEY_HERE":
+    if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY":
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel('gemini-1.5-flash')
     else:
@@ -65,7 +65,6 @@ def create_resume_pdf(data):
     styles.add(ParagraphStyle(name='JobTitlePDF', alignment=TA_CENTER, fontSize=12, fontName='Helvetica', spaceAfter=6, textColor=HexColor("#000000")))
     styles.add(ParagraphStyle(name='ContactPDF', alignment=TA_CENTER, fontSize=9, fontName='Helvetica', textColor=HexColor("#000000")))
     
-    # MODIFICATION: spaceAfter is now 0 to remove gap between title and line
     styles.add(ParagraphStyle(name='SectionTitlePDF', fontSize=11, fontName='Helvetica-Bold', spaceBefore=8, spaceAfter=0, textColor=HexColor("#000000")))
     
     styles.add(ParagraphStyle(name='BodyPDF', parent=styles['Normal'], fontSize=9.5, leading=11, spaceAfter=1, fontName='Helvetica'))
@@ -204,20 +203,44 @@ def get_default_resume():
     }
 
 # --- AI Generation Functions ---
+
 def generate_with_gemini(prompt):
+    """Generates content using the Gemini model and cleans up JSON markdown."""
     if not model:
         st.error("Gemini model is not configured. Please add your API key.")
         return None
     try:
-        response = model.generate_content(prompt).text.strip()
-        cleaned_response = re.sub(r'```json\s*|\s*```', '', response)
+        response = model.generate_content(prompt).text
+        # Clean up markdown fences (```json ... ```) that the model might add
+        # re.DOTALL ensures this works even if the JSON is multi-line
+        cleaned_response = re.sub(r'```json\s*|\s*```', '', response, flags=re.DOTALL).strip()
         return cleaned_response
     except Exception as e:
         st.error(f"Gemini API call failed: {e}")
         return None
 
+def parse_ai_json_response(response_str, expected_type, section_name):
+    """
+    Safely parses a JSON string from the AI and validates its Python type.
+    Returns the parsed data or None if parsing/validation fails.
+    """
+    if not response_str:
+        st.error(f"AI Error: The response for '{section_name}' was empty.")
+        return None
+    try:
+        data = json.loads(response_str)
+        if not isinstance(data, expected_type):
+            st.error(f"AI Error: Expected a {expected_type.__name__} for '{section_name}', but received a {type(data).__name__}.")
+            st.code(response_str) # Show the faulty response for debugging
+            return None
+        return data
+    except json.JSONDecodeError as e:
+        st.error(f"AI failed to generate valid JSON for '{section_name}': {e}")
+        st.code(response_str)
+        return None
+
 def generate_tailored_content(jd, current_experience, core_skills):
-    # --- PROMPTS (No changes needed here) ---
+    # --- PROMPTS ---
     skills_prompt = f"""
     Analyze the following job description for a Data Analyst/Scientist.
     Job Description: {jd}
@@ -228,7 +251,6 @@ def generate_tailored_content(jd, current_experience, core_skills):
     The top-level key in your response must be "technicalSkills".
     Respond with only the raw JSON object.
     """
-
     projects_prompt = f"""
     Generate a JSON array of 3 unique, impressive resume projects for a Data Analyst.
     Critically analyze this job description and infuse relevant keywords and technologies from it into each project's "description".
@@ -238,7 +260,6 @@ def generate_tailored_content(jd, current_experience, core_skills):
     The tone should be professional yet human, like someone proudly describing their work, not just a list of technologies.
     Respond with only the raw JSON array.
     """
-    
     experience_prompt = f"""
     Analyze the following job description: {jd}
     Now, take these existing resume tasks for a job role: {json.dumps(current_experience.get('tasks', []))}
@@ -247,55 +268,30 @@ def generate_tailored_content(jd, current_experience, core_skills):
     The rewritten tasks should sound like natural, accomplishment-driven bullet points on a real resume. Maintain the core responsibilities.
     Return a JSON array of the rewritten task strings. Respond with only the raw JSON array.
     """
-    
     soft_skills_prompt = f"""
     Based on the following job description, extract an array of the 6-7 most important soft skills.
     Job Description: {jd}
     Respond with only a raw JSON array of strings.
     """
-    
+
     # --- AI Calls ---
     skills_response = generate_with_gemini(skills_prompt)
     projects_response = generate_with_gemini(projects_prompt)
     experience_response = generate_with_gemini(experience_prompt)
     soft_skills_response = generate_with_gemini(soft_skills_prompt)
 
-    if not all([skills_response, projects_response, experience_response, soft_skills_response]): return None
+    # --- Use the helper to parse and validate all responses ---
+    new_skills_data = parse_ai_json_response(skills_response, dict, "Technical Skills")
+    new_projects = parse_ai_json_response(projects_response, list, "Projects")
+    new_tasks = parse_ai_json_response(experience_response, list, "Experience Tasks")
+    new_soft_skills = parse_ai_json_response(soft_skills_response, list, "Soft Skills")
 
-    # --- ROBUST JSON PARSING AND VALIDATION ---
-    try:
-        new_skills_data = json.loads(skills_response)
-        if not isinstance(new_skills_data, dict):
-            st.error(f"AI Error: Expected a JSON object for skills, but received a {type(new_skills_data).__name__}.")
-            st.code(skills_response) # Show the faulty response for debugging
-            return None
-
-        new_projects = json.loads(projects_response)
-        if not isinstance(new_projects, list):
-            st.error(f"AI Error: Expected a JSON array for projects, but received a {type(new_projects).__name__}.")
-            st.code(projects_response)
-            return None
-
-        new_tasks = json.loads(experience_response)
-        if not isinstance(new_tasks, list):
-            st.error(f"AI Error: Expected a JSON array for experience, but received a {type(new_tasks).__name__}.")
-            st.code(experience_response)
-            return None
-
-        new_soft_skills = json.loads(soft_skills_response)
-        if not isinstance(new_soft_skills, list):
-            st.error(f"AI Error: Expected a JSON array for soft skills, but received a {type(new_soft_skills).__name__}.")
-            st.code(soft_skills_response)
-            return None
-
-    except json.JSONDecodeError as e:
-        st.error(f"AI failed to generate valid JSON: {e}. Raw response shown below.")
-        st.code(f"Skills Response:\n{skills_response}\n\nProjects Response:\n{projects_response}")
+    # If any response failed validation, stop immediately.
+    if not all([new_skills_data, new_projects, new_tasks, new_soft_skills]):
+        st.warning("Halting generation due to one or more AI response errors.")
         return None
-        
-    # --- SAFER PROMPT GENERATION ---
-    # This new logic correctly flattens all skills from all categories into one list
-    # and handles cases where the 'technicalSkills' dictionary might be empty or missing.
+
+    # --- SAFER SUMMARY GENERATION ---
     tech_skills_dict = new_skills_data.get('technicalSkills', {})
     all_skills_flat = []
     if isinstance(tech_skills_dict, dict):
@@ -304,12 +300,13 @@ def generate_tailored_content(jd, current_experience, core_skills):
                 all_skills_flat.extend(skill_list)
 
     summary_prompt = f"""
-    Based on these skills: {', '.join(all_skills_flat)} and these projects: {', '.join([p.get('title', '') for p in new_projects])}, write a concise 2-3 sentence professional summary for a Data Analyst.
+    Based on these skills: {', '.join(all_skills_flat)} and these projects: {', '.join([p.get('title', 'Untitled Project') for p in new_projects])}, write a concise 2-3 sentence professional summary for a Data Analyst.
     Write it in a professional and confident tone, as if a person is describing their achievements and capabilities. Make it impactful but natural, avoiding overly robotic language.
     """
     new_summary = generate_with_gemini(summary_prompt)
     if not new_summary: return None
-    
+
+    # --- ASSEMBLE FINAL DATA ---
     updated_experience = current_experience.copy()
     updated_experience['tasks'] = new_tasks
 
@@ -320,6 +317,8 @@ def generate_tailored_content(jd, current_experience, core_skills):
         "projects": new_projects,
         "experience": [updated_experience]
     }
+
+
 # --- Initialize Session State ---
 if 'resume_data' not in st.session_state:
     st.session_state.resume_data = load_from_csv() or get_default_resume()
@@ -508,4 +507,3 @@ create_editable_section("Certifications", "certifications", {"name": "Certificat
 st.sidebar.divider()
 pdf_data = create_resume_pdf(st.session_state.resume_data)
 st.sidebar.download_button(label="⬇️ Download PDF", data=pdf_data, file_name=f"{resume.get('fullName', 'resume').replace(' ', '_')}_Resume.pdf", mime="application/pdf", use_container_width=True)
-
