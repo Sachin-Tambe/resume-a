@@ -217,6 +217,7 @@ def generate_with_gemini(prompt):
         return None
 
 def generate_tailored_content(jd, current_experience, core_skills):
+    # --- PROMPTS (No changes needed here) ---
     skills_prompt = f"""
     Analyze the following job description for a Data Analyst/Scientist.
     Job Description: {jd}
@@ -261,18 +262,49 @@ def generate_tailored_content(jd, current_experience, core_skills):
 
     if not all([skills_response, projects_response, experience_response, soft_skills_response]): return None
 
+    # --- ROBUST JSON PARSING AND VALIDATION ---
     try:
         new_skills_data = json.loads(skills_response)
+        if not isinstance(new_skills_data, dict):
+            st.error(f"AI Error: Expected a JSON object for skills, but received a {type(new_skills_data).__name__}.")
+            st.code(skills_response) # Show the faulty response for debugging
+            return None
+
         new_projects = json.loads(projects_response)
+        if not isinstance(new_projects, list):
+            st.error(f"AI Error: Expected a JSON array for projects, but received a {type(new_projects).__name__}.")
+            st.code(projects_response)
+            return None
+
         new_tasks = json.loads(experience_response)
+        if not isinstance(new_tasks, list):
+            st.error(f"AI Error: Expected a JSON array for experience, but received a {type(new_tasks).__name__}.")
+            st.code(experience_response)
+            return None
+
         new_soft_skills = json.loads(soft_skills_response)
+        if not isinstance(new_soft_skills, list):
+            st.error(f"AI Error: Expected a JSON array for soft skills, but received a {type(new_soft_skills).__name__}.")
+            st.code(soft_skills_response)
+            return None
 
     except json.JSONDecodeError as e:
-        st.error(f"AI failed to generate valid JSON: {e}. Please try again.")
+        st.error(f"AI failed to generate valid JSON: {e}. Raw response shown below.")
+        st.code(f"Skills Response:\n{skills_response}\n\nProjects Response:\n{projects_response}")
         return None
         
+    # --- SAFER PROMPT GENERATION ---
+    # This new logic correctly flattens all skills from all categories into one list
+    # and handles cases where the 'technicalSkills' dictionary might be empty or missing.
+    tech_skills_dict = new_skills_data.get('technicalSkills', {})
+    all_skills_flat = []
+    if isinstance(tech_skills_dict, dict):
+        for skill_list in tech_skills_dict.values():
+            if isinstance(skill_list, list):
+                all_skills_flat.extend(skill_list)
+
     summary_prompt = f"""
-    Based on these skills: {', '.join(list(new_skills_data.get('technicalSkills', {}).values())[0]) if new_skills_data.get('technicalSkills') else ''} and these projects: {', '.join([p['title'] for p in new_projects])}, write a concise 2-3 sentence professional summary for a Data Analyst.
+    Based on these skills: {', '.join(all_skills_flat)} and these projects: {', '.join([p.get('title', '') for p in new_projects])}, write a concise 2-3 sentence professional summary for a Data Analyst.
     Write it in a professional and confident tone, as if a person is describing their achievements and capabilities. Make it impactful but natural, avoiding overly robotic language.
     """
     new_summary = generate_with_gemini(summary_prompt)
@@ -286,9 +318,8 @@ def generate_tailored_content(jd, current_experience, core_skills):
         "technicalSkills": new_skills_data.get('technicalSkills', {}),
         "softSkills": new_soft_skills,
         "projects": new_projects,
-        "experience": [updated_experience] # Assuming we only update the first experience
+        "experience": [updated_experience]
     }
-
 # --- Initialize Session State ---
 if 'resume_data' not in st.session_state:
     st.session_state.resume_data = load_from_csv() or get_default_resume()
