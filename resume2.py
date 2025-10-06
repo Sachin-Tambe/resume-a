@@ -18,7 +18,7 @@ st.set_page_config(page_title="AI Resume Tailor", page_icon="📄", layout="wide
 # --- Gemini AI Configuration ---
 # It's recommended to use Streamlit secrets for API keys
 # For example: GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY" # Replace with your actual key or use secrets
+GEMINI_API_KEY = "AIzaSyDoxoLKeZHJ3rw7NNpN1q0BY00KXCRcqT4" # Replace with your actual key or use secrets
 model = None
 try:
     if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY":
