@@ -56,7 +56,7 @@ def load_from_csv():
 def create_resume_pdf(data):
     """Generates a high-quality, single-page PDF using the user-specified format."""
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=0.2*inch, rightMargin=0.2*inch, topMargin=0.2*inch, bottomMargin=0.2*inch)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=0.2*inch, rightMargin=0.2*inch, topMargin=0.1*inch, bottomMargin=0.1*inch)
     story = []
     styles = getSampleStyleSheet()
 
